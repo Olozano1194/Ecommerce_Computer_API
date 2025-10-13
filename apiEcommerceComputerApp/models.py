@@ -15,6 +15,11 @@ class Categoria(models.Model):
     nombre = models.CharField(max_length=100)
     descripcion = models.TextField(blank=True)
 
+    class Meta:
+        verbose_name = 'Categoria'
+        verbose_name_plural = 'Categorias'
+        db_table = 'categoria'
+
     def __str__(self):
         return self.nombre
 
@@ -33,27 +38,27 @@ class Producto(models.Model):
     class Meta:
         verbose_name = 'Producto'
         verbose_name_plural = 'Productos'
-        db_table = 'dbecommercecomputer'
+        db_table = 'producto'
         ordering = ['-fecha_creacion']
     
     def __str__(self):
         return self.nombre
 
 class UserManager(BaseUserManager): # Clase para la creación de usuarios
-    def create_user(self, email, password, **extra_fields): #extra_fields es un diccionario que puede contener cualquier campo adicional que se desee agregar al modelo de usuario
-        if not email:
-            raise ValueError('Los usuarios deben tener un correo electrónico')
-        user = self.model(email=self.normalize_email(email), **extra_fields) # Normaliza la dirección de correo electrónico convirtiendo todos los caracteres en minúsculas y eliminando cualquier espacio en blanco al principio o al final        
-        user.set_password(password) # Establece la contraseña del usuario encriptada 
-        user.save()
-        return user
+    def create_user(self, correo, contraseña, **extra_fields): #extra_fields es un diccionario que puede contener cualquier campo adicional que se desee agregar al modelo de usuario
+        if not correo:
+            raise ValueError('El correo electrónico es obligatorio')
+        usuario = self.model(correo=self.normalize_email(correo), **extra_fields) # Normaliza la dirección de correo electrónico convirtiendo todos los caracteres en minúsculas y eliminando cualquier espacio en blanco al principio o al final        
+        usuario.set_password(contraseña) # Establece la contraseña del usuario encriptada 
+        usuario.save()
+        return usuario
     
 class Usuario(AbstractBaseUser):
-    email = models.EmailField(unique=True)
-    name = models.CharField(max_length=45)
-    lastname = models.CharField(max_length=50)
+    correo = models.EmailField(unique=True)
+    nombre = models.CharField(max_length=45)
+    apellido = models.CharField(max_length=50)
     #user = models.CharField(max_length=30, unique=True)
-    avatar = models.ImageField(upload_to='fotos/', null=True, blank=True, default='')
+    # foto_perfil = models.ImageField(upload_to='fotos/', null=True, blank=True, default='')
     
         
     OPCIONES_ROL = [
@@ -69,14 +74,14 @@ class Usuario(AbstractBaseUser):
     objects = UserManager()
 
     #Se define el campo de autenticación sea el email
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['name', 'lastname']
+    USERNAME_FIELD = 'correo'
+    REQUIRED_FIELDS = ['nombre', 'apellido']
 
-    def full_name(self):
-        return '{} {}'.format(self.name, self.lastname)
+    def get_full_name(self):
+        return '{} {}'.format(self.nombre, self.apellido)
 
     def __str__(self):
-        return self.full_name()
+        return self.get_full_name()
     
     class Meta:
         verbose_name = 'Usuario'

@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from .views import ProductoViewSet, CategoriaViewSet, ProductosNuevosViewSet, MasVendidosViewSet, ProductosPorTipoViewSet
+from .views import ProductoViewSet, CategoriaViewSet, ProductosNuevosViewSet, MasVendidosViewSet, ProductosPorTipoViewSet, UserViewSet
 
 #api versioning
 router = DefaultRouter()
@@ -9,6 +9,7 @@ router.register(r'productos', ProductoViewSet, basename='producto')
 router.register(r'categorias', CategoriaViewSet, basename='categoria')
 router.register(r'productos-nuevos', ProductosNuevosViewSet, basename='productos-nuevo')
 router.register(r'mas-vendidos', MasVendidosViewSet, basename='mas-vendido')
+router.register(r'usuarios', UserViewSet, basename='usuario')
 
 
 urlpatterns = [
