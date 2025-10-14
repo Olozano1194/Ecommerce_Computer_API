@@ -1,4 +1,5 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -10,6 +11,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from .models import Producto, Categoria, Usuario
 from .serializers import ProductoSerializer, CategoriaSerializer, UsuarioSerializer
+from .permissions import IsAdministrador, ReadOnlyOrAdmin
 
 # Create your views here.
 @extend_schema_view(
@@ -18,34 +20,94 @@ from .serializers import ProductoSerializer, CategoriaSerializer, UsuarioSeriali
         retrieve=extend_schema(description="Obtiene los detalles de un producto específico por si ID"
     )
 )
+
 class ProductoViewSet(viewsets.ModelViewSet):
-    """ViewSet para gestionar productos."""
+    """
+    ViewSet para gestionar productos.
+    """
     queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['categoria', 'tipo', 'es_nuevo', 'es_mas_vendido']
     search_fields = ['nombre', 'descripcion']
-    ordering_fields = ['precio', 'fecha_creacion']
+    ordering_fields = ['precio', 'fecha_creacion', 'nombre']
+    ordering = ['-fecha_creacion']
+
+    def get_permissions(self):
+        """
+        Asignar los permisos según la acción.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            # Solo admin puede crear, actualizar o eliminar
+            return [IsAdministrador()]
+        else:
+            # Cualquiera puede ver (Get, List)
+            return [permissions.AllowAny()]
+    
+    def get_queryset(self):
+        """
+        Filtrar productos según el rol del usuario.
+        """
+        queryset = Producto.objects.all()
+        # si el usuario es admin, ve todos los productos
+        if self.request.user.is_authenticated and self.request.user.roles == 'admin':
+            return queryset
+        
+        # Usuarios normales solo ven productos activos
+        return queryset
+    
+    def perform_create(self, serializer):
+        """
+        Asignar automaticamente el suaurio actual al crear un producto.
+        """
+        serializer.save(creado_por=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def mis_productos(self, request):
+        """
+        Endpoint personalizado para que los admin vean sus productos creados.
+        """
+        if not request.user.is_authenticated or request.user.roles != 'admin':
+            return Response(
+                {'error': 'No tienes permisos para ver esta información.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    
+        productos = Producto.objects.filter(creado_por=request.user)
+        serializer = self.get_serializer(productos, many=True)
+        return Response(serializer.data)
 
 class CategoriaViewSet(viewsets.ModelViewSet):
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
 
+    def get_permissions(self):
+        """
+        Permisos para categorías: lectura pública, escritura solo para admin.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdministrador()]
+        else:
+            return [permissions.AllowAny()]
+
 # Vistas específicas para la página principal
 class ProductosNuevosViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProductoSerializer
+    permission_classes = [permissions.AllowAny] # Permitir acceso público
     
     def get_queryset(self):
         return Producto.objects.filter(es_nuevo=True)
 
 class MasVendidosViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProductoSerializer
+    permission_classes = [permissions.AllowAny] # Permitir acceso público
     
     def get_queryset(self):
         return Producto.objects.filter(es_mas_vendido=True)
 
 class ProductosPorTipoViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProductoSerializer
+    permission_classes = [permissions.AllowAny] # Permitir acceso público
     
     def get_queryset(self):
         tipo = self.kwargs['tipo']
@@ -138,13 +200,13 @@ class UserViewSet(viewsets.ModelViewSet):
 #esta es la autenticación del usuario osea me guarda el token donde debe ser
 class CustomAuthTokenViewSet(APIView):
     def post(self, request, *args, **kwargs):
-        email = request.data.get('email')
-        password = request.data.get('password')
+        email = request.data.get('correo')
+        password = request.data.get('contraseña')
 
         if not email or not password:
             return Response({'error': 'Correo y contraseña son requeridos'}, status=status.HTTP_400_BAD_REQUEST)
         #autenticamos el usuario
-        user = authenticate(request, email=email, password=password)
+        user = authenticate(request, username=email, password=password)
         #si el usuario es correcto generamos el token
         if user:
             token, created = Token.objects.get_or_create(user=user)

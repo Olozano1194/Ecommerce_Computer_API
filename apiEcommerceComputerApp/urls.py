@@ -16,6 +16,8 @@ urlpatterns = [
     path('ecommerce/api/v1/', include(router.urls)),      
     
     path('ecommerce/api/v1/productos-tipo/<str:tipo>/', ProductosPorTipoViewSet.as_view({'get': 'list'}), name='productos-tipo'),
+    # endpoint para productos del admin
+    path('productos/mis-productos/', ProductoViewSet.as_view({'get': 'mis_productos'}), name='mis-productos'),
     path('ecommerce/api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('ecommerce/api/v1/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     # path('gym/api/v1/home/', Home.as_view(), name='home'),

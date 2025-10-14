@@ -57,6 +57,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'apiEcommerceComputerApp.middleware.RestrictAdminMiddleware', # Nuestro middleware personalizado
 ]
 
 ROOT_URLCONF = 'apiEcommerceComputer.urls'
