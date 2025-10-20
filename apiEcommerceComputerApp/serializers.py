@@ -4,6 +4,9 @@ from .models import Usuario, Producto, Categoria, ImagenProducto
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class CategoriaSerializer(serializers.ModelSerializer):
     """
@@ -147,24 +150,25 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
     Serializer para el registro de nuevos usuarios.
     Automáticamente los marca como 'cliente'.
     """
-    password = serializers.CharField(
-        write_only=True, 
-        required=True,
-        style={'input_type': 'password'}
-    )
+    # password = serializers.CharField(
+    #     write_only=True, 
+    #     required=True,
+    #     # style={'input_type': 'password'}
+    #     validators=[validate_password]
+    # )
 
-    password_confirmacion = serializers.CharField(
-        write_only=True,
-        required=True,
-        style={'input_type': 'password'}
-    )
+    # password_confirmacion = serializers.CharField(
+    #     write_only=True,
+    #     required=True,
+    #     # style={'input_type': 'password'}
+    # )
 
     class Meta:
         model = Usuario
         fields = '__all__'
         read_only_fields = ['id','created_at', 'is_active']
         extra_kwargs = {
-            'correo': {'required': True},
+            'email': {'required': True},
             'nombre': {'required': True},
             'apellido': {'required': True}
         }
@@ -201,34 +205,30 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
         Crea el usuario y automaticamente lo asigna al rol 'cliente'.
         """
         # Elimina la configuración de contraseña
-        validated_data.pop('password_confirmacion')
+        # validated_data.pop('password_confirmacion')
         # Extrae la contraseña
-        password = validated_data.pop('password')
+        # password = validated_data.pop('password')
         # Crea el usuario como cliente
-        usuario = Usuario.objects.create_user(
-            contraseña=password,
-            **validated_data
+        usuario = User.objects.create_user(
+            email=validated_data['email'],
+            password=validated_data['password'],
+            nombre=validated_data.get('nombre', ''),
+            apellido=validated_data.get('apellido', '')
         )        
         # Asegura que sea cliente
         usuario.roles = 'cliente'
-        usuario.save()        
+        # usuario.save()        
         # Crea automáticamente el token de autenticación
-        Token.objects.create(user=usuario)
+        # Token.objects.create(user=usuario)
         
         return usuario
 
     def update(self, instance, validated_data):
         try:
-            # avatar = validated_data.get('avatar')
-            # print(f"Avatar recibido: {avatar}")
             # Manejo de la contraseña
             if 'password' in validated_data:
                 password = validated_data.pop('password')
                 instance.set_password(password)
-            
-            # Manejo del avatar
-            # if 'avatar' in validated_data:
-            #     instance.avatar = validated_data['avatar']
 
             # Actualizar los demás campos
             for attr, value in validated_data.items():

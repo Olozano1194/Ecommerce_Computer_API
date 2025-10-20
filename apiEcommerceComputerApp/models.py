@@ -1,7 +1,7 @@
 from django.db import models
 from datetime import timedelta
 from django.utils import timezone
-from django.contrib.auth.models import BaseUserManager, AbstractBaseUser
+from django.contrib.auth.models import BaseUserManager, AbstractBaseUser, PermissionsMixin
 from django.core.exceptions import ValidationError
 
 # Create your models here.
@@ -9,21 +9,21 @@ class UserManager(BaseUserManager):
     """ 
     Clase para la creación de usuarios personalizados con correo electrónico como identificador único.
     """
-    def create_user(self, correo, contraseña, **extra_fields): #extra_fields es un diccionario que puede contener cualquier campo adicional que se desee agregar al modelo de usuario
+    def create_user(self, email, password=None, **extra_fields): #extra_fields es un diccionario que puede contener cualquier campo adicional que se desee agregar al modelo de usuario
         """
-        Crea y guarda un usuario regular con el correo y contraseña dados.
+        Crea y guarda un usuario regular con el correo y contraseña datos.
         """
-        if not correo:
+        if not email:
             raise ValueError('El correo electrónico es obligatorio')
         
         extra_fields.setdefault('is_staff', False)
         extra_fields.setdefault('is_superuser', False)
-        usuario = self.model(correo=self.normalize_email(correo), **extra_fields) # Normaliza la dirección de correo electrónico convirtiendo todos los caracteres en minúsculas y eliminando cualquier espacio en blanco al principio o al final               
-        usuario.set_password(contraseña) # Establece la contraseña del usuario encriptada 
+        usuario = self.model(email=self.normalize_email(email), **extra_fields) # Normaliza la dirección de correo electrónico convirtiendo todos los caracteres en minúsculas y eliminando cualquier espacio en blanco al principio o al final               
+        usuario.set_password(password) # Establece la contraseña del usuario encriptada 
         usuario.save(using=self._db) # Guarda el usuario en la base de datos
         return usuario
     
-    def create_superuser(self, correo, contraseña=None, **extra_fields):
+    def create_superuser(self, email, password=None, **extra_fields):
         """
         Crea y guarda un superusuario con privilegios de staff.
         """
@@ -35,7 +35,7 @@ class UserManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('El superusuario debe tener is_superuser=True.')
 
-        return self.create_user(correo, contraseña, **extra_fields)
+        return self.create_user(email, password, **extra_fields)
 
 class Roles(models.TextChoices):
     """
@@ -45,27 +45,25 @@ class Roles(models.TextChoices):
     CLIENTE = 'cliente', 'Cliente'
     # PROVEEDOR = 'proveedor', 'Proveedor'
 
-class Usuario(AbstractBaseUser):
+class Usuario(AbstractBaseUser, PermissionsMixin):
     """
     Modelo personalizado de usuario que utiliza el correo electrónico como identificador único.
     """
-    correo = models.EmailField(unique=True)
+    email = models.EmailField(unique=True)
     nombre = models.CharField(max_length=45)
-    apellido = models.CharField(max_length=50)
-    #user = models.CharField(max_length=30, unique=True)
-    # foto_perfil = models.ImageField(upload_to='fotos/', null=True, blank=True, default='')      
+    apellido = models.CharField(max_length=50)         
     
     roles = models.CharField(max_length=10, choices=Roles.choices, default='CLIENTE')    
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     #Usamos el UserManager personalizado
     objects = UserManager()
 
     #Se define el campo de autenticación sea el email
-    USERNAME_FIELD = 'correo'
+    USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['nombre', 'apellido']
 
     def get_full_name(self):
