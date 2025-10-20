@@ -3,7 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
-from rest_framework.authtoken.models import Token
+# from rest_framework.authtoken.models import Token
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import viewsets
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -263,18 +264,23 @@ class RegistroUsuarioView(APIView):
             usuario = serializer.save()
             
             # Obtiene el token creado automáticamente
-            token = Token.objects.get(user=usuario)
+            # token = Token.objects.get(user=usuario)
+            refresh = RefreshToken.for_user(usuario)
             
+            # return Response({
+            #     'mensaje': 'Usuario registrado exitosamente',
+            #     'usuario': {
+            #         'id': usuario.id,
+            #         'correo': usuario.correo,
+            #         'nombre': usuario.nombre,
+            #         'apellido': usuario.apellido,
+            #         'roles': usuario.roles
+            #     },
+            #     'token': refresh.access_token,
             return Response({
-                'mensaje': 'Usuario registrado exitosamente',
-                'usuario': {
-                    'id': usuario.id,
-                    'correo': usuario.correo,
-                    'nombre': usuario.nombre,
-                    'apellido': usuario.apellido,
-                    'roles': usuario.roles
-                },
-                'token': token.key
+                'user': serializer.data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
             }, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -300,38 +306,49 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
-        correo = request.data.get('correo')
+        email = request.data.get('email')
         password = request.data.get('password')
-        
-        if not correo or not password:
-            return Response(
-                {'error': 'Correo y contraseña son requeridos'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Autentica al usuario
-        usuario = authenticate(request, username=correo, password=password)
-        
-        if usuario:
-            # Obtiene o crea el token
-            token, created = Token.objects.get_or_create(user=usuario)
-            
+        usuario = authenticate(email=email, password=password)
+
+        if usuario is not None:
+            refresh = RefreshToken.for_user(usuario)
             return Response({
-                'token': token.key,
-                'usuario': {
-                    'id': usuario.id,
-                    'correo': usuario.correo,
-                    'nombre': usuario.nombre,
-                    'apellido': usuario.apellido,
-                    'nombre_completo': usuario.get_full_name(),
-                    'roles': usuario.roles
-                }
-            }, status=status.HTTP_200_OK)
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user': UsuarioSerializer(usuario).data
+            })
+        return Response({'error': 'Credenciales inválidas'}, 
+                      status=status.HTTP_401_UNAUTHORIZED)    
         
-        return Response(
-            {'error': 'Credenciales inválidas'},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
+        # if not email or not password:
+        #     return Response(
+        #         {'error': 'Correo y contraseña son requeridos'},
+        #         status=status.HTTP_400_BAD_REQUEST
+        #     )
+        
+        # # Autentica al usuario
+        # usuario = authenticate(request, username=email, password=password)
+        
+        # if usuario:
+        #     # Obtiene o crea el token
+        #     token, created = Token.objects.get_or_create(user=usuario)
+            
+        #     return Response({
+        #         'token': token.key,
+        #         'usuario': {
+        #             'id': usuario.id,
+        #             'email': usuario.email,
+        #             'nombre': usuario.nombre,
+        #             'apellido': usuario.apellido,
+        #             'nombre_completo': usuario.get_full_name(),
+        #             'roles': usuario.roles
+        #         }
+        #     }, status=status.HTTP_200_OK)
+        
+        # return Response(
+        #     {'error': 'Credenciales inválidas'},
+        #     status=status.HTTP_401_UNAUTHORIZED
+        # )
 
 # Cerrar sesión
 class LogoutView(APIView):
@@ -344,11 +361,16 @@ class LogoutView(APIView):
     def post(self, request):
         try:
             # Elimina el token del usuario
-            request.user.auth_token.delete()
-            return Response(
-                {'mensaje': 'Sesión cerrada correctamente'},
-                status=status.HTTP_200_OK
-            )
+            # request.user.auth_token.delete()
+            # return Response(
+            #     {'mensaje': 'Sesión cerrada correctamente'},
+            #     status=status.HTTP_200_OK
+            # )
+            refresh_token = request.data["refresh"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({'message': 'Sesión cerrada exitosamente'}, 
+                          status=status.HTTP_200_OK)
         except Exception as e:
             return Response(
                 {'error': str(e)},

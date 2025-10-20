@@ -7,7 +7,7 @@ admin.site.register(Categoria)
 
 # Registro personalizado para Usuario, para ver más campos en la lista
 class UsuarioAdmin(admin.ModelAdmin):
-    list_display = ('correo', 'nombre', 'apellido', 'roles', 'is_staff') # Muestra estos campos en la lista
+    list_display = ('email', 'nombre', 'apellido', 'roles', 'is_staff') # Muestra estos campos en la lista
     list_filter = ('roles', 'is_staff') # Añade filtros en la barra lateral
 
 admin.site.register(Usuario, UsuarioAdmin)
