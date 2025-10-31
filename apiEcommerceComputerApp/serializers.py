@@ -1,7 +1,5 @@
 from rest_framework import serializers
 from .models import Usuario, Producto, Categoria, ImagenProducto
-#token
-from rest_framework.authtoken.models import Token
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
@@ -29,13 +27,12 @@ class CategoriaSerializer(serializers.ModelSerializer):
         """
         Validad que el nombre de la categoría sea único.
         """
+        qs = Categoria.objects.filter(nombre_iexact=value)
         if self.instance: # si es una actualización
-            if Categoria.objects.filter(nombre_iexact=value).exclude(pk=self.instance.pk).exists():
-                raise serializers.ValidationError('Ya existe una categoría con este nombre.')
-            else: # Si es una creación
-                if Categoria.objects.filter(nombre__iaexact=value).exists():
-                    raise serializers.ValidationError('Ya existe una categoría con este nombre.')
-            return value
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('Ya existe una categoría con este nombre.')
+        return value
 
 class ImagenProductoSerializer(serializers.ModelSerializer):
     """
@@ -48,12 +45,17 @@ class ImagenProductoSerializer(serializers.ModelSerializer):
 
 class ProductoListSerializer(serializers.ModelSerializer):
     """
-    Serializer ligero para listar productos.
-    Usando en la página principal, categorías, etc.
+    Serializer para listar productos. Reutiliza los campos ya presentes en tu modelo:
+    - rating  <- corresponde al float que guardas
+    - cantidad_vendida <- entero que guardas
     """
+    # Campos computados que añadimos desde la queryset (annotate)
+    average_rating = serializers.FloatField(read_only=True)
+    cantidad_vendida = serializers.IntegerField(read_only=True)
+    
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
-    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
-
+    imagen_principal = serializers.SerializerMethodField()    
+    # tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
     # Campos calculados
     es_mas_vendido = serializers.BooleanField(read_only=True)
     esta_agotado = serializers.BooleanField(read_only=True)
@@ -62,7 +64,13 @@ class ProductoListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Producto
         fields = '__all__'
-        read_only_fields = ['id', 'es_nuevo', 'cantidad_vendida']
+        read_only_fields = ['id', 'es_nuevo', 'cantidad_vendida', 'average_rating', 'imagen_principal']
+    
+    def get_imagen_principal(self, obj):
+        imagenes = getattr(obj, 'imagenes', None)
+        if imagenes:
+            return getattr(first, 'imagen', None)
+        return getattr(obj, 'imagen', None)
     
 class ProductoDetailSerializer(serializers.ModelSerializer):
     """
@@ -150,12 +158,12 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
     Serializer para el registro de nuevos usuarios.
     Automáticamente los marca como 'cliente'.
     """
-    # password = serializers.CharField(
-    #     write_only=True, 
-    #     required=True,
-    #     # style={'input_type': 'password'}
-    #     validators=[validate_password]
-    # )
+    password = serializers.CharField(
+        write_only=True, 
+        required=True,
+        style={'input_type': 'password'}
+        # validators=[validate_password]
+    )
 
     # password_confirmacion = serializers.CharField(
     #     write_only=True,
@@ -177,7 +185,7 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
         """
         Valida que el correo no esté registrado.
         """
-        if Usuario.objects.filter(correo__iexact=value).exists():
+        if Usuario.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError('Este correo ya está registrado.')
         return value.lower()
 
@@ -190,25 +198,10 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(list(e.messages))
         return value
 
-    def validate(self, data):
-        """
-        Valida que las contraseñas coincidad.
-        """
-        if data['password'] != data['password_confirmacion']:
-            raise serializers.ValidationError({
-                'password_confirmacion': 'Las contraseñas no coinciden.'
-            })
-        return data
-
     def create(self, validated_data):
         """
         Crea el usuario y automaticamente lo asigna al rol 'cliente'.
         """
-        # Elimina la configuración de contraseña
-        # validated_data.pop('password_confirmacion')
-        # Extrae la contraseña
-        # password = validated_data.pop('password')
-        # Crea el usuario como cliente
         usuario = User.objects.create_user(
             email=validated_data['email'],
             password=validated_data['password'],
@@ -217,29 +210,19 @@ class UsuarioRegistroSerializer(serializers.ModelSerializer):
         )        
         # Asegura que sea cliente
         usuario.roles = 'cliente'
-        # usuario.save()        
+        usuario.save()        
         # Crea automáticamente el token de autenticación
         # Token.objects.create(user=usuario)
         
         return usuario
 
-    def update(self, instance, validated_data):
-        try:
-            # Manejo de la contraseña
-            if 'password' in validated_data:
-                password = validated_data.pop('password')
-                instance.set_password(password)
-
-            # Actualizar los demás campos
-            for attr, value in validated_data.items():
-                setattr(instance, attr, value)
-
-            instance.save()
-            return instance
-            
-        except Exception as e:
-            print("Error en el serializer update:", str(e))
-            raise 
+    def to_representation(self, instance):
+        """
+        Controla qué datos se devuelven después de crear el usuario.
+        """
+        data = super().to_representation(instance)
+        data.pop('password', None)  # Asegurarse de que la contraseña no se devuelva
+        return data
 
 class UsuarioSerializer(serializers.ModelSerializer):
     """"

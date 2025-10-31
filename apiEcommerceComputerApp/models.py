@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth.models import BaseUserManager, AbstractBaseUser, PermissionsMixin
 from django.core.exceptions import ValidationError
+from django.conf import settings
 
 # Create your models here.
 class UserManager(BaseUserManager): 
@@ -93,6 +94,9 @@ class Categoria(models.Model):
     """
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True, null=True)
+    imagen = models.ImageField(upload_to='categorias/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Categoria'
@@ -107,7 +111,7 @@ class Tipo_Producto(models.TextChoices):
     Tipos de productos disponibles.
     """
     PORTATILES = 'portatil', 'Portátil'
-    DESKTOP = 'desktop', 'Desktop'
+    Escritorio = 'escritorio', 'Escritorio'
     TABLET = 'tablet', 'Tablet'
     COMPONENTE = 'componente', 'Componente'
     ACCESORIO = 'accesorio', 'Accesorio'
@@ -121,22 +125,24 @@ class Producto(models.Model):
     precio = models.DecimalField(max_digits=10, decimal_places=2)
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name='productos')
     tipo = models.CharField(max_length=20, choices=Tipo_Producto.choices)
-    imagen = models.ImageField(upload_to='productos/', null=True, blank=True)
+    imagen_principal = models.ImageField(upload_to='productos/', null=True, blank=True)
     stock = models.IntegerField(default=0)
     # Campos de control de ventas
     cantidad_vendida = models.IntegerField(default=0)
     es_nuevo = models.BooleanField(default=False)
     # Campos de fecha
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
-    fecha_actualizacion = models.DateTimeField(auto_now=True)
-
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     creado_por = models.ForeignKey(
-        Usuario,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name='productos_creados',
         null=True,
         blank=True
     )
+    # Campos para rating (opcional si calculas desde Review)
+    rating = models.FloatField(default=0.0)
+    total_reviews = models.IntegerField(default=0)
 
     def clean(self):
         """
@@ -190,11 +196,11 @@ class Producto(models.Model):
         verbose_name_plural = 'Productos'
         db_table = 'producto'
         ordering = ['-fecha_creacion']
-        indexes = [
-            models.Index(fields=['tipo', 'categoria']),
-            models.Index(fields=['-cantidad_vendida']),
-            models.Index(fields=['-fecha_creacion']),
-        ]
+        # indexes = [
+        #     models.Index(fields=['tipo', 'categoria']),
+        #     models.Index(fields=['-cantidad_vendida']),
+        #     models.Index(fields=['-fecha_creacion']),
+        # ]
 
 class ImagenProducto(models.Model):
     """
@@ -203,18 +209,18 @@ class ImagenProducto(models.Model):
     producto = models.ForeignKey(
         Producto, 
         on_delete=models.CASCADE,
-        related_name='imagenes_adicionales'
+        related_name='imagenes'
     )
-    imagen = models.ImageField(upload_to='productos/adicionales/')
+    imagen = models.ImageField(upload_to='productos/imagenes/')
     orden = models.PositiveIntegerField(default=0)  # Para ordenar las imágenes
     es_principal = models.BooleanField(default=False)
     
     def __str__(self):
-        return f'Imagen {self.orden} de {self.producto.nombre}'
+        return f'Imagen {self.producto.nombre} ({self.id})'
     
     class Meta:
         verbose_name = 'Imagen del Producto'
         verbose_name_plural = 'Imágenes de Productos'
         db_table = 'imagen_producto'
-        ordering = ['producto', 'orden']
-        unique_together = [['producto', 'orden']]
+        ordering = ['orden']
+        # unique_together = [['producto', 'orden']]

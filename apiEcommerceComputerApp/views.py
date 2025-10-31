@@ -6,6 +6,8 @@ from django.contrib.auth import authenticate
 # from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import viewsets
+from django.db.models import Avg, Sum
+from django.db.models.functions import Coalesce
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -18,6 +20,7 @@ from .serializers import (
     UsuarioRegistroSerializer,
     CambiarPasswordSerializer    
 )
+from rest_framework.pagination import PageNumberPagination
 from .permissions import IsAdministrador
 
 # Create your views here.
@@ -28,6 +31,12 @@ from .permissions import IsAdministrador
     )
 )
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    schema = None
+
 class ProductoViewSet(viewsets.ModelViewSet):
     """
    ViewSet para gestionar productos.
@@ -35,8 +44,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
     - Crear/Editar/Eliminar: Solo administradores
     """
     queryset = Producto.objects.all()
+    serializer_class = ProductoListSerializer
     permission_classes = [permissions.AllowAny]  # Lectura pública
+    pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['categoria', 'tipo', 'es_nuevo']
 
     # filtros
     filterset_fields = {
@@ -70,24 +82,61 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return [permissions.IsAuthenticated(), IsAdministrador()]
         return [permissions.AllowAny()]        
     
+    def get_queryset(self):
+        """
+        Anotamos queryset con:
+          - average_rating: promedio de valoraciones (replace 'valoraciones' por tu related_name)
+          - cantidad_vendida: suma de cantidad en order items (replace 'order_items' por tu related_name)
+        """
+        qs = Producto.objects.all()
+
+        # Ajusta los related_name 'valoraciones' y 'order_items' según tu proyecto
+        qs = qs.annotate(
+            average_rating=Coalesce(Avg('valoraciones__puntuacion'), 0.0),
+            cantidad_vendida=Coalesce(Sum('order_items__cantidad'), 0)
+        )
+
+        return qs
+    
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
     def nuevos(self, request):
         """
-        Endpoint: /productos/nuevos/
+        Endpoint: /productos/nuevos/?categoria=<id_or_nombre>&limit=6
         Retorna productos nuevos (últimos 30 días)
         """
-        productos_nuevos = Producto.objects.filter(es_nuevo=True)
-        serializer = ProductoListSerializer(productos_nuevos, many=True, context={'request': request})
+        categoria = request.query_params.get('categoria')
+        limit = int(request.query_params.get('limit', 6))
+
+        qs = self.get_queryset()
+        if categoria:
+            if categoria.isdigit():
+                qs = qs.filter(categoria__id=int(categoria))
+            else:
+                qs = qs.filter(categoria__nombre__iexact=categoria)
+
+        qs = qs.order_by('-fecha_creacion')[:limit]
+        serializer = self.get_serializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])    
     def mas_vendidos(self, request):
         """
-        Endpoint: /productos/mas_vendidos/
+        Endpoint: /productos/mas_vendidos/?categoria=<id_or_nombre>&limit=6
         Retorna los productos más vendidos (cantidad_vendida >= 10)
         """
-        productos_vendidos = Producto.objects.filter(cantidad_vendida__gte=10).order_by('-cantidad_vendida')
-        serializer = ProductoListSerializer(productos_vendidos, many=True, context={'request': request})
+        categoria = request.query_params.get('categoria')
+        limit = int(request.query_params.get('limit', 6))
+
+        qs = self.get_queryset()
+        if categoria:
+            # Intentar filtrar por id si es numérico, si no por nombre (case-insensitive)
+            if categoria.isdigit():
+                qs = qs.filter(categoria__id=int(categoria))
+            else:
+                qs = qs.filter(categoria__nombre__iexact=categoria)
+
+        qs = qs.order_by('-cantidad_vendida', '-average_rating')[:limit]
+        serializer = self.get_serializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
@@ -138,11 +187,6 @@ class CategoriaViewSet(viewsets.ModelViewSet):
         - Lectura: Público
         - Escritura: Solo admin
         """
-        queryset = Categoria.objects.all()
-    serializer_class = CategoriaSerializer
-    
-    def get_permissions(self):
-        """Permisos: lectura pública, escritura solo para admin"""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [permissions.IsAuthenticated(), IsAdministrador()]
         return [permissions.AllowAny()]
@@ -249,7 +293,7 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-#esta es la autenticación del usuario osea me guarda el token donde debe ser
+#esta es la clase de registro del usuario
 class RegistroUsuarioView(APIView):
     """
     Endpoint: POST /registro/
